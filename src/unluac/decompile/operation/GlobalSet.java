@@ -13,18 +13,18 @@ import unluac.decompile.target.GlobalTarget;
 
 public class GlobalSet extends Operation {
 
-  private ConstantExpression global;
-  private Expression value;
-  
-  public GlobalSet(int line, ConstantExpression global, Expression value) {
-    super(line);
-    this.global = global;
-    this.value = value;
-  }
+    private ConstantExpression global;
+    private Expression value;
 
-  @Override
-  public List<Statement> process(Registers r, Block block) {
-    return Arrays.asList(new Assignment(new GlobalTarget(global), value, line));
-  }
-  
+    public GlobalSet(int line, ConstantExpression global, Expression value) {
+        super(line);
+        this.global = global;
+        this.value = value;
+    }
+
+    @Override
+    public List<Statement> process(Registers r, Block block) {
+        return Arrays.asList(new Assignment(new GlobalTarget(global), value, line));
+    }
+
 }

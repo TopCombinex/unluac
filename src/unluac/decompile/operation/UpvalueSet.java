@@ -12,18 +12,18 @@ import unluac.decompile.target.UpvalueTarget;
 
 public class UpvalueSet extends Operation {
 
-  private UpvalueTarget target;
-  private Expression value;
-  
-  public UpvalueSet(int line, String upvalue, Expression value) {
-    super(line);
-    target = new UpvalueTarget(upvalue);
-    this.value = value;
-  }
+    private UpvalueTarget target;
+    private Expression value;
 
-  @Override
-  public List<Statement> process(Registers r, Block block) {
-    return Arrays.asList(new Assignment(target, value, line));
-  }
-  
+    public UpvalueSet(int line, String upvalue, Expression value) {
+        super(line);
+        target = new UpvalueTarget(upvalue);
+        this.value = value;
+    }
+
+    @Override
+    public List<Statement> process(Registers r, Block block) {
+        return Arrays.asList(new Assignment(target, value, line));
+    }
+
 }

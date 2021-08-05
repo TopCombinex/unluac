@@ -11,426 +11,442 @@ import unluac.assemble.Directive;
 
 
 abstract public class LFunctionType extends BObjectType<LFunction> {
-  
-  public static LFunctionType get(Version.FunctionType type) {
-    switch(type) {
-      case LUA50: return new LFunctionType50();
-      case LUA51: return new LFunctionType51();
-      case LUA52: return new LFunctionType52();
-      case LUA53: return new LFunctionType53();
-      case LUA54: return new LFunctionType54();
-      default: throw new IllegalStateException();
+
+    public static LFunctionType get(Version.FunctionType type) {
+        switch (type) {
+            case LUA50:
+                return new LFunctionType50();
+            case LUA51:
+                return new LFunctionType51();
+            case LUA52:
+                return new LFunctionType52();
+            case LUA53:
+                return new LFunctionType53();
+            case LUA54:
+                return new LFunctionType54();
+            default:
+                throw new IllegalStateException();
+        }
     }
-  }
-  
-  protected static class LFunctionParseState {
-    
-    public LString name;
-    int lineBegin;
-    int lineEnd;
-    int lenUpvalues;
-    int lenParameter;
-    int vararg;
-    int maximumStackSize;
-    int length;
-    int[] code;
-    BList<LObject> constants;
-    BList<LFunction> functions;
-    BList<BInteger> lines;
-    BList<LAbsLineInfo> abslineinfo;
-    BList<LLocal> locals;
-    LUpvalue upvalues[];
-  }
-  
-  @Override
-  public LFunction parse(ByteBuffer buffer, BHeader header) {
-    if(header.debug) {
-      System.out.println("-- beginning to parse function");
+
+    protected static class LFunctionParseState {
+
+        public LString name;
+        int lineBegin;
+        int lineEnd;
+        int lenUpvalues;
+        int lenParameter;
+        int vararg;
+        int maximumStackSize;
+        int length;
+        int[] code;
+        BList<LObject> constants;
+        BList<LFunction> functions;
+        BList<BInteger> lines;
+        BList<LAbsLineInfo> abslineinfo;
+        BList<LLocal> locals;
+        LUpvalue upvalues[];
     }
-    if(header.debug) {
-      System.out.println("-- parsing name...start...end...upvalues...params...varargs...stack");
+
+    @Override
+    public LFunction parse(ByteBuffer buffer, BHeader header) {
+        if (header.debug) {
+            System.out.println("-- beginning to parse function");
+        }
+        if (header.debug) {
+            System.out.println("-- parsing name...start...end...upvalues...params...varargs...stack");
+        }
+        LFunctionParseState s = new LFunctionParseState();
+        parse_main(buffer, header, s);
+        int[] lines = new int[s.lines.length.asInt()];
+        for (int i = 0; i < lines.length; i++) {
+            lines[i] = s.lines.get(i).asInt();
+        }
+        LAbsLineInfo[] abslineinfo = null;
+        if (s.abslineinfo != null) {
+            abslineinfo = s.abslineinfo.asArray(new LAbsLineInfo[s.abslineinfo.length.asInt()]);
+        }
+        LFunction lfunc = new LFunction(header, s.name, s.lineBegin, s.lineEnd, s.code, lines, abslineinfo, s.locals.asArray(new LLocal[s.locals.length.asInt()]), s.constants.asArray(new LObject[s.constants.length.asInt()]), s.upvalues, s.functions.asArray(new LFunction[s.functions.length.asInt()]), s.maximumStackSize, s.lenUpvalues, s.lenParameter, s.vararg);
+        for (LFunction child : lfunc.functions) {
+            child.parent = lfunc;
+        }
+        if (s.lines.length.asInt() == 0 && s.locals.length.asInt() == 0) {
+            lfunc.stripped = true;
+        }
+        return lfunc;
     }
-    LFunctionParseState s = new LFunctionParseState();
-    parse_main(buffer, header, s);
-    int[] lines = new int[s.lines.length.asInt()];
-    for(int i = 0; i < lines.length; i++) {
-      lines[i] = s.lines.get(i).asInt();
+
+    abstract public List<Directive> get_directives();
+
+    abstract protected void parse_main(ByteBuffer buffer, BHeader header, LFunctionParseState s);
+
+    protected void parse_code(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
+        if (header.debug) {
+            System.out.println("-- beginning to parse bytecode list");
+        }
+        s.length = header.integer.parse(buffer, header).asInt();
+        s.code = new int[s.length];
+        for (int i = 0; i < s.length; i++) {
+            s.code[i] = buffer.getInt();
+            if (header.debug) {
+                System.out.println("-- parsed codepoint " + Integer.toHexString(s.code[i]));
+            }
+        }
     }
-    LAbsLineInfo[] abslineinfo = null;
-    if(s.abslineinfo != null) {
-      abslineinfo = s.abslineinfo.asArray(new LAbsLineInfo[s.abslineinfo.length.asInt()]);
+
+    protected void write_code(OutputStream out, BHeader header, LFunction object) throws IOException {
+        header.integer.write(out, header, new BInteger(object.code.length));
+        for (int i = 0; i < object.code.length; i++) {
+            int codepoint = object.code[i];
+            if (header.lheader.endianness == LHeader.LEndianness.LITTLE) {
+                out.write((byte) (0xFF & (codepoint)));
+                out.write((byte) (0xFF & (codepoint >> 8)));
+                out.write((byte) (0xFF & (codepoint >> 16)));
+                out.write((byte) (0xFF & (codepoint >> 24)));
+            } else {
+                out.write((byte) (0xFF & (codepoint >> 24)));
+                out.write((byte) (0xFF & (codepoint >> 16)));
+                out.write((byte) (0xFF & (codepoint >> 8)));
+                out.write((byte) (0xFF & (codepoint)));
+            }
+        }
     }
-    LFunction lfunc = new LFunction(header, s.name, s.lineBegin, s.lineEnd, s.code, lines, abslineinfo, s.locals.asArray(new LLocal[s.locals.length.asInt()]), s.constants.asArray(new LObject[s.constants.length.asInt()]), s.upvalues, s.functions.asArray(new LFunction[s.functions.length.asInt()]), s.maximumStackSize, s.lenUpvalues, s.lenParameter, s.vararg);
-    for(LFunction child : lfunc.functions) {
-      child.parent = lfunc;
+
+    protected void parse_constants(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
+        if (header.debug) {
+            System.out.println("-- beginning to parse constants list");
+        }
+        s.constants = header.constant.parseList(buffer, header);
+        if (header.debug) {
+            System.out.println("-- beginning to parse functions list");
+        }
+        s.functions = header.function.parseList(buffer, header);
     }
-    if(s.lines.length.asInt() == 0 && s.locals.length.asInt() == 0) {
-      lfunc.stripped = true;
+
+    protected void write_constants(OutputStream out, BHeader header, LFunction object) throws IOException {
+        header.constant.writeList(out, header, object.constants);
+        header.function.writeList(out, header, object.functions);
     }
-    return lfunc;
-  }
-  
-  abstract public List<Directive> get_directives();
-  
-  abstract protected void parse_main(ByteBuffer buffer, BHeader header, LFunctionParseState s);
-  
-  protected void parse_code(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
-    if(header.debug) {
-      System.out.println("-- beginning to parse bytecode list");
+
+    protected void create_upvalues(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
+        s.upvalues = new LUpvalue[s.lenUpvalues];
+        for (int i = 0; i < s.lenUpvalues; i++) {
+            s.upvalues[i] = new LUpvalue();
+        }
     }
-    s.length = header.integer.parse(buffer, header).asInt();
-    s.code = new int[s.length];
-    for(int i = 0; i < s.length; i++) {
-      s.code[i] = buffer.getInt();
-      if(header.debug) {
-        System.out.println("-- parsed codepoint " + Integer.toHexString(s.code[i]));
-      }
+
+    protected void parse_upvalues(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
+        BList<LUpvalue> upvalues = header.upvalue.parseList(buffer, header);
+        s.lenUpvalues = upvalues.length.asInt();
+        s.upvalues = upvalues.asArray(new LUpvalue[s.lenUpvalues]);
     }
-  }
-  
-  protected void write_code(OutputStream out, BHeader header, LFunction object) throws IOException {
-    header.integer.write(out, header, new BInteger(object.code.length));
-    for(int i = 0; i < object.code.length; i++) {
-      int codepoint = object.code[i];
-      if(header.lheader.endianness == LHeader.LEndianness.LITTLE) {
-        out.write((byte)(0xFF & (codepoint)));
-        out.write((byte)(0xFF & (codepoint >> 8)));
-        out.write((byte)(0xFF & (codepoint >> 16)));
-        out.write((byte)(0xFF & (codepoint >> 24)));
-      } else {
-        out.write((byte)(0xFF & (codepoint >> 24)));
-        out.write((byte)(0xFF & (codepoint >> 16)));
-        out.write((byte)(0xFF & (codepoint >> 8)));
-        out.write((byte)(0xFF & (codepoint)));
-      }
+
+    protected void write_upvalues(OutputStream out, BHeader header, LFunction object) throws IOException {
+        header.upvalue.writeList(out, header, object.upvalues);
     }
-  }
-  
-  protected void parse_constants(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
-    if(header.debug) {
-      System.out.println("-- beginning to parse constants list");
+
+    protected void parse_debug(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
+        if (header.debug) {
+            System.out.println("-- beginning to parse source lines list");
+        }
+        s.lines = header.integer.parseList(buffer, header);
+        if (header.debug) {
+            System.out.println("-- beginning to parse locals list");
+        }
+        s.locals = header.local.parseList(buffer, header);
+        if (header.debug) {
+            System.out.println("-- beginning to parse upvalues list");
+        }
+        BList<LString> upvalueNames = header.string.parseList(buffer, header);
+        for (int i = 0; i < upvalueNames.length.asInt(); i++) {
+            s.upvalues[i].bname = upvalueNames.get(i);
+            s.upvalues[i].name = s.upvalues[i].bname.deref();
+        }
     }
-    s.constants = header.constant.parseList(buffer, header);
-    if(header.debug) {
-      System.out.println("-- beginning to parse functions list");
+
+    protected void write_debug(OutputStream out, BHeader header, LFunction object) throws IOException {
+        header.integer.write(out, header, new BInteger(object.lines.length));
+        for (int i = 0; i < object.lines.length; i++) {
+            header.integer.write(out, header, new BInteger(object.lines[i]));
+        }
+        header.local.writeList(out, header, object.locals);
+        int upvalueNameLength = 0;
+        for (LUpvalue upvalue : object.upvalues) {
+            if (upvalue.bname != null && upvalue.bname != LString.NULL) {
+                upvalueNameLength++;
+            } else {
+                break;
+            }
+        }
+        header.integer.write(out, header, new BInteger(upvalueNameLength));
+        for (int i = 0; i < upvalueNameLength; i++) {
+            header.string.write(out, header, object.upvalues[i].bname);
+        }
     }
-    s.functions = header.function.parseList(buffer, header);
-  }
-  
-  protected void write_constants(OutputStream out, BHeader header, LFunction object) throws IOException {
-    header.constant.writeList(out, header, object.constants);
-    header.function.writeList(out, header, object.functions);
-  }
-  
-  protected void create_upvalues(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
-    s.upvalues = new LUpvalue[s.lenUpvalues];
-    for(int i = 0; i < s.lenUpvalues; i++) {
-      s.upvalues[i] = new LUpvalue();
-    }
-  }
-  
-  protected void parse_upvalues(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
-    BList<LUpvalue> upvalues = header.upvalue.parseList(buffer, header);
-    s.lenUpvalues = upvalues.length.asInt();
-    s.upvalues = upvalues.asArray(new LUpvalue[s.lenUpvalues]);
-  }
-  
-  protected void write_upvalues(OutputStream out, BHeader header, LFunction object) throws IOException {
-    header.upvalue.writeList(out, header, object.upvalues);
-  }
-  
-  protected void parse_debug(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
-    if(header.debug) {
-      System.out.println("-- beginning to parse source lines list");
-    }
-    s.lines = header.integer.parseList(buffer, header);
-    if(header.debug) {
-      System.out.println("-- beginning to parse locals list");
-    }
-    s.locals = header.local.parseList(buffer, header);
-    if(header.debug) {
-      System.out.println("-- beginning to parse upvalues list");
-    }
-    BList<LString> upvalueNames = header.string.parseList(buffer, header);
-    for(int i = 0; i < upvalueNames.length.asInt(); i++) {
-      s.upvalues[i].bname = upvalueNames.get(i);
-      s.upvalues[i].name = s.upvalues[i].bname.deref();
-    }
-  }
-  
-  protected void write_debug(OutputStream out, BHeader header, LFunction object) throws IOException {
-    header.integer.write(out, header, new BInteger(object.lines.length));
-    for(int i = 0; i < object.lines.length; i++) {
-      header.integer.write(out, header, new BInteger(object.lines[i]));
-    }
-    header.local.writeList(out, header, object.locals);
-    int upvalueNameLength = 0;
-    for(LUpvalue upvalue : object.upvalues) {
-      if(upvalue.bname != null && upvalue.bname != LString.NULL) {
-        upvalueNameLength++;
-      } else {
-        break;
-      }
-    }
-    header.integer.write(out, header, new BInteger(upvalueNameLength));
-    for(int i = 0; i < upvalueNameLength; i++) {
-      header.string.write(out, header, object.upvalues[i].bname);
-    }
-  }
-  
+
 }
 
 class LFunctionType50 extends LFunctionType {
 
-  @Override
-  protected void parse_main(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
-    s.name = header.string.parse(buffer, header);
-    s.lineBegin = header.integer.parse(buffer, header).asInt();
-    s.lineEnd = 0;
-    s.lenUpvalues = 0xFF & buffer.get();
-    create_upvalues(buffer, header, s);
-    s.lenParameter = 0xFF & buffer.get();
-    s.vararg = 0xFF & buffer.get();
-    s.maximumStackSize = 0xFF & buffer.get();
-    parse_debug(buffer, header, s);
-    parse_constants(buffer, header, s);
-    parse_code(buffer, header, s);
-  }
-  
-  @Override
-  public List<Directive> get_directives() {
-    return Arrays.asList(new Directive[] {
-      Directive.SOURCE,
-      Directive.LINEDEFINED,
-      Directive.NUMPARAMS,
-      Directive.IS_VARARG,
-      Directive.MAXSTACKSIZE,
-    });
-  }
-  
-  @Override
-  public void write(OutputStream out, BHeader header, LFunction object) throws IOException {
-    header.string.write(out, header, object.name);
-    header.integer.write(out, header, new BInteger(object.linedefined));
-    out.write(object.numUpvalues);
-    out.write(object.numParams);
-    out.write(object.vararg);
-    out.write(object.maximumStackSize);
-    write_debug(out, header, object);
-    write_constants(out, header, object);
-    write_code(out, header, object);
-  }
-  
+    @Override
+    protected void parse_main(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
+        s.name = header.string.parse(buffer, header);
+        s.lineBegin = header.integer.parse(buffer, header).asInt();
+        s.lineEnd = 0;
+        s.lenUpvalues = 0xFF & buffer.get();
+        create_upvalues(buffer, header, s);
+        s.lenParameter = 0xFF & buffer.get();
+        s.vararg = 0xFF & buffer.get();
+        s.maximumStackSize = 0xFF & buffer.get();
+        parse_debug(buffer, header, s);
+        parse_constants(buffer, header, s);
+        parse_code(buffer, header, s);
+    }
+
+    @Override
+    public List<Directive> get_directives() {
+        return Arrays.asList(new Directive[]{
+                Directive.SOURCE,
+                Directive.LINEDEFINED,
+                Directive.NUMPARAMS,
+                Directive.IS_VARARG,
+                Directive.MAXSTACKSIZE,
+        });
+    }
+
+    @Override
+    public void write(OutputStream out, BHeader header, LFunction object) throws IOException {
+        header.string.write(out, header, object.name);
+        header.integer.write(out, header, new BInteger(object.linedefined));
+        out.write(object.numUpvalues);
+        out.write(object.numParams);
+        out.write(object.vararg);
+        out.write(object.maximumStackSize);
+        write_debug(out, header, object);
+        write_constants(out, header, object);
+        write_code(out, header, object);
+    }
+
 }
 
 class LFunctionType51 extends LFunctionType {
-  
-  protected void parse_main(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
-    s.name = header.string.parse(buffer, header);
-    s.lineBegin = header.integer.parse(buffer, header).asInt();
-    s.lineEnd = header.integer.parse(buffer, header).asInt();
-    s.lenUpvalues = 0xFF & buffer.get();
-    create_upvalues(buffer, header, s);
-    s.lenParameter = 0xFF & buffer.get();
-    s.vararg = 0xFF & buffer.get();
-    s.maximumStackSize = 0xFF & buffer.get();
-    parse_code(buffer, header, s);
-    parse_constants(buffer, header, s);
-    parse_debug(buffer, header, s);
-  }
-  
-  @Override
-  public List<Directive> get_directives() {
-    return Arrays.asList(new Directive[] {
-      Directive.SOURCE,
-      Directive.LINEDEFINED,
-      Directive.LASTLINEDEFINED,
-      Directive.NUMPARAMS,
-      Directive.IS_VARARG,
-      Directive.MAXSTACKSIZE,
-    });
-  }
-  
-  @Override
-  public void write(OutputStream out, BHeader header, LFunction object) throws IOException {
-    header.string.write(out, header, object.name);
-    header.integer.write(out, header, new BInteger(object.linedefined));
-    header.integer.write(out, header, new BInteger(object.lastlinedefined));
-    out.write(object.numUpvalues);
-    out.write(object.numParams);
-    out.write(object.vararg);
-    out.write(object.maximumStackSize);
-    write_code(out, header, object);
-    write_constants(out, header, object);
-    write_debug(out, header, object);
-  }
-  
+
+    protected void parse_main(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
+        s.name = header.string.parse(buffer, header);
+        s.lineBegin = header.integer.parse(buffer, header).asInt();
+        s.lineEnd = header.integer.parse(buffer, header).asInt();
+        s.lenUpvalues = 0xFF & buffer.get();
+        create_upvalues(buffer, header, s);
+        s.lenParameter = 0xFF & buffer.get();
+        s.vararg = 0xFF & buffer.get();
+        s.maximumStackSize = 0xFF & buffer.get();
+        parse_code(buffer, header, s);
+        parse_constants(buffer, header, s);
+        parse_debug(buffer, header, s);
+    }
+
+    @Override
+    public List<Directive> get_directives() {
+        return Arrays.asList(new Directive[]{
+                Directive.SOURCE,
+                Directive.LINEDEFINED,
+                Directive.LASTLINEDEFINED,
+                Directive.NUMPARAMS,
+                Directive.IS_VARARG,
+                Directive.MAXSTACKSIZE,
+        });
+    }
+
+    @Override
+    public void write(OutputStream out, BHeader header, LFunction object) throws IOException {
+        header.string.write(out, header, object.name);
+        header.integer.write(out, header, new BInteger(object.linedefined));
+        header.integer.write(out, header, new BInteger(object.lastlinedefined));
+        out.write(object.numUpvalues);
+        out.write(object.numParams);
+        out.write(object.vararg);
+        out.write(object.maximumStackSize);
+        write_code(out, header, object);
+        write_constants(out, header, object);
+        write_debug(out, header, object);
+    }
+
 }
 
 class LFunctionType52 extends LFunctionType {
-  
-  protected void parse_main(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
-    s.lineBegin = header.integer.parse(buffer, header).asInt();
-    s.lineEnd = header.integer.parse(buffer, header).asInt();
-    s.lenParameter = 0xFF & buffer.get();
-    s.vararg = 0xFF & buffer.get();
-    s.maximumStackSize = 0xFF & buffer.get();
-    parse_code(buffer, header, s);
-    parse_constants(buffer, header, s);
-    parse_upvalues(buffer, header, s);
-    s.name = header.string.parse(buffer, header);
-    parse_debug(buffer, header, s);
-  }
-  
-  @Override
-  public List<Directive> get_directives() {
-    return Arrays.asList(new Directive[] {
-      Directive.LINEDEFINED,
-      Directive.LASTLINEDEFINED,
-      Directive.NUMPARAMS,
-      Directive.IS_VARARG,
-      Directive.MAXSTACKSIZE,
-      Directive.SOURCE,
-    });
-  }
-  
-  @Override
-  public void write(OutputStream out, BHeader header, LFunction object) throws IOException {
-    header.integer.write(out, header, new BInteger(object.linedefined));
-    header.integer.write(out, header, new BInteger(object.lastlinedefined));
-    out.write(object.numParams);
-    out.write(object.vararg);
-    out.write(object.maximumStackSize);
-    write_code(out, header, object);
-    write_constants(out, header, object);
-    write_upvalues(out, header, object);
-    header.string.write(out, header, object.name);
-    write_debug(out, header, object);
-  }
-  
+
+    protected void parse_main(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
+        s.lineBegin = header.integer.parse(buffer, header).asInt();
+        s.lineEnd = header.integer.parse(buffer, header).asInt();
+        s.lenParameter = 0xFF & buffer.get();
+        s.vararg = 0xFF & buffer.get();
+        s.maximumStackSize = 0xFF & buffer.get();
+        parse_code(buffer, header, s);
+        parse_constants(buffer, header, s);
+        parse_upvalues(buffer, header, s);
+        s.name = header.string.parse(buffer, header);
+        parse_debug(buffer, header, s);
+    }
+
+    @Override
+    public List<Directive> get_directives() {
+        return Arrays.asList(new Directive[]{
+                Directive.LINEDEFINED,
+                Directive.LASTLINEDEFINED,
+                Directive.NUMPARAMS,
+                Directive.IS_VARARG,
+                Directive.MAXSTACKSIZE,
+                Directive.SOURCE,
+        });
+    }
+
+    @Override
+    public void write(OutputStream out, BHeader header, LFunction object) throws IOException {
+        header.integer.write(out, header, new BInteger(object.linedefined));
+        header.integer.write(out, header, new BInteger(object.lastlinedefined));
+        out.write(object.numParams);
+        out.write(object.vararg);
+        out.write(object.maximumStackSize);
+        write_code(out, header, object);
+        write_constants(out, header, object);
+        write_upvalues(out, header, object);
+        header.string.write(out, header, object.name);
+        write_debug(out, header, object);
+    }
+
 }
 
 class LFunctionType53 extends LFunctionType {
-  
-  protected void parse_main(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
-    s.name = header.string.parse(buffer, header); //TODO: psource
-    s.lineBegin = header.integer.parse(buffer, header).asInt();
-    s.lineEnd = header.integer.parse(buffer, header).asInt();
-    s.lenParameter = 0xFF & buffer.get();
-    s.vararg = 0xFF & buffer.get();
-    s.maximumStackSize = 0xFF & buffer.get();
-    parse_code(buffer, header, s);
-    s.constants = header.constant.parseList(buffer, header);
-    parse_upvalues(buffer, header, s);
-    s.functions = header.function.parseList(buffer, header);
-    parse_debug(buffer, header, s);
-  }
-  
-  @Override
-  public List<Directive> get_directives() {
-    return Arrays.asList(new Directive[] {
-      Directive.SOURCE,
-      Directive.LINEDEFINED,
-      Directive.LASTLINEDEFINED,
-      Directive.NUMPARAMS,
-      Directive.IS_VARARG,
-      Directive.MAXSTACKSIZE,
-    });
-  }
-  
-  @Override
-  public void write(OutputStream out, BHeader header, LFunction object) throws IOException {
-    header.string.write(out, header, object.name);
-    header.integer.write(out, header, new BInteger(object.linedefined));
-    header.integer.write(out, header, new BInteger(object.lastlinedefined));
-    out.write(object.numParams);
-    out.write(object.vararg);
-    out.write(object.maximumStackSize);
-    write_code(out, header, object);
-    header.constant.writeList(out, header, object.constants);
-    write_upvalues(out, header, object);
-    header.function.writeList(out, header, object.functions);
-    write_debug(out, header, object);
-  }
-  
+
+    protected void parse_main(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
+        //源文件名
+        s.name = header.string.parse(buffer, header); //TODO: psource
+        //起止行号
+        s.lineBegin = header.integer.parse(buffer, header).asInt();
+        s.lineEnd = header.integer.parse(buffer, header).asInt();
+        //固定参数个数
+        s.lenParameter = 0xFF & buffer.get();
+        //是否为可变参数
+        s.vararg = 0xFF & buffer.get();
+        //寄存器数量
+        s.maximumStackSize = 0xFF & buffer.get();
+        //解析函数指令表
+        parse_code(buffer, header, s);
+        //常量表
+        s.constants = header.constant.parseList(buffer, header);
+        //upvalue表
+        parse_upvalues(buffer, header, s);
+        //子函数原型表
+        s.functions = header.function.parseList(buffer, header);
+        //剩余调试信息
+        parse_debug(buffer, header, s);
+    }
+
+    @Override
+    public List<Directive> get_directives() {
+        return Arrays.asList(new Directive[]{
+                Directive.SOURCE,
+                Directive.LINEDEFINED,
+                Directive.LASTLINEDEFINED,
+                Directive.NUMPARAMS,
+                Directive.IS_VARARG,
+                Directive.MAXSTACKSIZE,
+        });
+    }
+
+    @Override
+    public void write(OutputStream out, BHeader header, LFunction object) throws IOException {
+        header.string.write(out, header, object.name);
+        header.integer.write(out, header, new BInteger(object.linedefined));
+        header.integer.write(out, header, new BInteger(object.lastlinedefined));
+        out.write(object.numParams);
+        out.write(object.vararg);
+        out.write(object.maximumStackSize);
+        write_code(out, header, object);
+        header.constant.writeList(out, header, object.constants);
+        write_upvalues(out, header, object);
+        header.function.writeList(out, header, object.functions);
+        write_debug(out, header, object);
+    }
+
 }
 
 class LFunctionType54 extends LFunctionType {
-  
-  @Override
-  protected void parse_debug(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
-    // TODO: process line info correctly
-    s.lines = (new BIntegerType50(1)).parseList(buffer, header);
-    s.abslineinfo = header.abslineinfo.parseList(buffer, header);
-    s.locals = header.local.parseList(buffer, header);
-    BList<LString> upvalueNames = header.string.parseList(buffer, header);
-    for(int i = 0; i < upvalueNames.length.asInt(); i++) {
-      s.upvalues[i].bname = upvalueNames.get(i);
-      s.upvalues[i].name = s.upvalues[i].bname.deref();
+
+    @Override
+    protected void parse_debug(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
+        // TODO: process line info correctly
+        s.lines = (new BIntegerType50(1)).parseList(buffer, header);
+        s.abslineinfo = header.abslineinfo.parseList(buffer, header);
+        s.locals = header.local.parseList(buffer, header);
+        BList<LString> upvalueNames = header.string.parseList(buffer, header);
+        for (int i = 0; i < upvalueNames.length.asInt(); i++) {
+            s.upvalues[i].bname = upvalueNames.get(i);
+            s.upvalues[i].name = s.upvalues[i].bname.deref();
+        }
     }
-  }
-  
-  @Override
-  protected void write_debug(OutputStream out, BHeader header, LFunction object) throws IOException {
-    header.integer.write(out, header, new BInteger(object.lines.length));
-    for(int i = 0; i < object.lines.length; i++) {
-      out.write(object.lines[i]);
+
+    @Override
+    protected void write_debug(OutputStream out, BHeader header, LFunction object) throws IOException {
+        header.integer.write(out, header, new BInteger(object.lines.length));
+        for (int i = 0; i < object.lines.length; i++) {
+            out.write(object.lines[i]);
+        }
+        header.abslineinfo.writeList(out, header, object.abslineinfo);
+        header.local.writeList(out, header, object.locals);
+        int upvalueNameLength = 0;
+        for (LUpvalue upvalue : object.upvalues) {
+            if (upvalue.bname != null) {
+                upvalueNameLength++;
+            } else {
+                break;
+            }
+        }
+        header.integer.write(out, header, new BInteger(upvalueNameLength));
+        for (int i = 0; i < upvalueNameLength; i++) {
+            header.string.write(out, header, object.upvalues[i].bname);
+        }
     }
-    header.abslineinfo.writeList(out, header, object.abslineinfo);
-    header.local.writeList(out, header, object.locals);
-    int upvalueNameLength = 0;
-    for(LUpvalue upvalue : object.upvalues) {
-      if(upvalue.bname != null) {
-        upvalueNameLength++;
-      } else {
-        break;
-      }
+
+    protected void parse_main(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
+        s.name = header.string.parse(buffer, header);
+        s.lineBegin = header.integer.parse(buffer, header).asInt();
+        s.lineEnd = header.integer.parse(buffer, header).asInt();
+        s.lenParameter = 0xFF & buffer.get();
+        s.vararg = 0xFF & buffer.get();
+        s.maximumStackSize = 0xFF & buffer.get();
+        parse_code(buffer, header, s);
+        s.constants = header.constant.parseList(buffer, header);
+        parse_upvalues(buffer, header, s);
+        s.functions = header.function.parseList(buffer, header);
+        parse_debug(buffer, header, s);
     }
-    header.integer.write(out, header, new BInteger(upvalueNameLength));
-    for(int i = 0; i < upvalueNameLength; i++) {
-      header.string.write(out, header, object.upvalues[i].bname);
+
+    @Override
+    public List<Directive> get_directives() {
+        return Arrays.asList(new Directive[]{
+                Directive.SOURCE,
+                Directive.LINEDEFINED,
+                Directive.LASTLINEDEFINED,
+                Directive.NUMPARAMS,
+                Directive.IS_VARARG,
+                Directive.MAXSTACKSIZE,
+        });
     }
-  }
-  
-  protected void parse_main(ByteBuffer buffer, BHeader header, LFunctionParseState s) {
-    s.name = header.string.parse(buffer, header);
-    s.lineBegin = header.integer.parse(buffer, header).asInt();
-    s.lineEnd = header.integer.parse(buffer, header).asInt();
-    s.lenParameter = 0xFF & buffer.get();
-    s.vararg = 0xFF & buffer.get();
-    s.maximumStackSize = 0xFF & buffer.get();
-    parse_code(buffer, header, s);
-    s.constants = header.constant.parseList(buffer, header);
-    parse_upvalues(buffer, header, s);
-    s.functions = header.function.parseList(buffer, header);
-    parse_debug(buffer, header, s);
-  }
-  
-  @Override
-  public List<Directive> get_directives() {
-    return Arrays.asList(new Directive[] {
-      Directive.SOURCE,
-      Directive.LINEDEFINED,
-      Directive.LASTLINEDEFINED,
-      Directive.NUMPARAMS,
-      Directive.IS_VARARG,
-      Directive.MAXSTACKSIZE,
-    });
-  }
-  
-  @Override
-  public void write(OutputStream out, BHeader header, LFunction object) throws IOException {
-    header.string.write(out, header, object.name);
-    header.integer.write(out, header, new BInteger(object.linedefined));
-    header.integer.write(out, header, new BInteger(object.lastlinedefined));
-    out.write(object.numParams);
-    out.write(object.vararg);
-    out.write(object.maximumStackSize);
-    write_code(out, header, object);
-    header.constant.writeList(out, header, object.constants);
-    write_upvalues(out, header, object);
-    header.function.writeList(out, header, object.functions);
-    write_debug(out, header, object);
-  }
-  
+
+    @Override
+    public void write(OutputStream out, BHeader header, LFunction object) throws IOException {
+        header.string.write(out, header, object.name);
+        header.integer.write(out, header, new BInteger(object.linedefined));
+        header.integer.write(out, header, new BInteger(object.lastlinedefined));
+        out.write(object.numParams);
+        out.write(object.vararg);
+        out.write(object.maximumStackSize);
+        write_code(out, header, object);
+        header.constant.writeList(out, header, object.constants);
+        write_upvalues(out, header, object);
+        header.function.writeList(out, header, object.functions);
+        write_debug(out, header, object);
+    }
+
 }

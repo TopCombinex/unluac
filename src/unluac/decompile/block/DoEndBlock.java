@@ -7,36 +7,36 @@ import unluac.parse.LFunction;
 
 public class DoEndBlock extends ContainerBlock {
 
-  public DoEndBlock(LFunction function, int begin, int end) {
-    super(function, begin, end, 1);
-  }
+    public DoEndBlock(LFunction function, int begin, int end) {
+        super(function, begin, end, 1);
+    }
 
-  @Override
-  public boolean breakable() {
-    return false;
-  }
-  
-  @Override
-  public boolean isUnprotected() {
-    return false;
-  }
-  
-  public boolean allowsPreDeclare() {
-    return true;
-  }
-  
-  @Override
-  public int getLoopback() {
-    throw new IllegalStateException();
-  }
-  
-  @Override
-  public void print(Decompiler d, Output out) {
-    out.println("do");
-    out.indent();
-    Statement.printSequence(d, out, statements);
-    out.dedent();
-    out.print("end");
-  }
-  
+    @Override
+    public boolean breakable() {
+        return false;
+    }
+
+    @Override
+    public boolean isUnprotected() {
+        return false;
+    }
+
+    public boolean allowsPreDeclare() {
+        return true;
+    }
+
+    @Override
+    public int getLoopback() {
+        throw new IllegalStateException();
+    }
+
+    @Override
+    public void print(Decompiler d, Output out) {
+        out.println("do");
+        out.indent();
+        Statement.printSequence(d, out, statements);
+        out.dedent();
+        out.print("end");
+    }
+
 }

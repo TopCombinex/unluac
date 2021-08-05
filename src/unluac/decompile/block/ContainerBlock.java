@@ -9,34 +9,34 @@ import unluac.parse.LFunction;
 
 abstract public class ContainerBlock extends Block {
 
-  protected final List<Statement> statements;
-  
-  public ContainerBlock(LFunction function, int begin, int end, int priority) {
-    super(function, begin, end, priority);
-    statements = new ArrayList<Statement>(Math.max(4, end - begin + 1));
-  }
-  
-  @Override
-  public void walk(Walker w) {
-    w.visitStatement(this);
-    for(Statement statement : statements) {
-      statement.walk(w);
+    protected final List<Statement> statements;
+
+    public ContainerBlock(LFunction function, int begin, int end, int priority) {
+        super(function, begin, end, priority);
+        statements = new ArrayList<Statement>(Math.max(4, end - begin + 1));
     }
-  }
-  
-  @Override
-  public boolean isContainer() {
-    return begin < end;
-  }
-  
-  @Override
-  public boolean isEmpty() {
-    return statements.isEmpty();
-  }
-  
-  @Override
-  public void addStatement(Statement statement) {
-    statements.add(statement);
-  }
-  
+
+    @Override
+    public void walk(Walker w) {
+        w.visitStatement(this);
+        for (Statement statement : statements) {
+            statement.walk(w);
+        }
+    }
+
+    @Override
+    public boolean isContainer() {
+        return begin < end;
+    }
+
+    @Override
+    public boolean isEmpty() {
+        return statements.isEmpty();
+    }
+
+    @Override
+    public void addStatement(Statement statement) {
+        statements.add(statement);
+    }
+
 }
